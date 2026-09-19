@@ -1,5 +1,5 @@
 """
-Firebase Admin SDK initialisation, used for sending push notifications.
+Firebase Admin SDK initialisation, used for sending push notifications and Realtime Database sync.
 
 The rest of the backend deliberately avoids the Admin SDK: ``firebase_auth.py``
 verifies ID tokens against Google's rotating public certificates precisely so
@@ -54,13 +54,15 @@ def get_firebase_app() -> Any | None:
     except ValueError:
         pass  # No default app exists yet
 
+    options = {"databaseURL": settings.FIREBASE_DATABASE_URL}
+
     # 2. Try JSON string from settings or env
     json_str = (settings.FIREBASE_CREDENTIALS_JSON or os.getenv("FIREBASE_CREDENTIALS_JSON", "")).strip()
     if json_str:
         try:
             cred_dict = json.loads(json_str)
             cred = credentials.Certificate(cred_dict)
-            _app = firebase_admin.initialize_app(cred)
+            _app = firebase_admin.initialize_app(cred, options=options)
             logger.info("Firebase Admin SDK initialised via FIREBASE_CREDENTIALS_JSON — push notifications enabled.")
             return _app
         except Exception:
@@ -73,7 +75,7 @@ def get_firebase_app() -> Any | None:
             try:
                 cred_dict = json.loads(path)
                 cred = credentials.Certificate(cred_dict)
-                _app = firebase_admin.initialize_app(cred)
+                _app = firebase_admin.initialize_app(cred, options=options)
                 logger.info("Firebase Admin SDK initialised via inline JSON — push notifications enabled.")
                 return _app
             except Exception:
@@ -82,7 +84,7 @@ def get_firebase_app() -> Any | None:
             try:
                 if Path(path).is_file():
                     cred = credentials.Certificate(path)
-                    _app = firebase_admin.initialize_app(cred)
+                    _app = firebase_admin.initialize_app(cred, options=options)
                     logger.info("Firebase Admin SDK initialised from %s — push notifications enabled.", path)
                     return _app
             except Exception:
@@ -92,7 +94,7 @@ def get_firebase_app() -> Any | None:
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         try:
             cred = credentials.ApplicationDefault()
-            _app = firebase_admin.initialize_app(cred)
+            _app = firebase_admin.initialize_app(cred, options=options)
             logger.info("Firebase Admin SDK initialised via Application Default Credentials.")
             return _app
         except Exception:
@@ -108,4 +110,3 @@ def get_firebase_app() -> Any | None:
 def is_push_enabled() -> bool:
     """Whether push notifications can actually be sent from this process."""
     return get_firebase_app() is not None
-

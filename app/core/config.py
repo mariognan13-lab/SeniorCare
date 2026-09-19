@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # Firebase (Batch 2)
     FIREBASE_CREDENTIALS_PATH: str = ""
     FIREBASE_CREDENTIALS_JSON: str = ""
+    FIREBASE_DATABASE_URL: str = "https://yarin-dc220-default-rtdb.asia-southeast1.firebasedatabase.app/"
     # Project ID used to verify Firebase ID tokens presented by the Android client.
     # Must match google-services.json -> project_info.project_id.
     FIREBASE_PROJECT_ID: str = "yarin-dc220"

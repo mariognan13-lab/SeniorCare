@@ -1,16 +1,61 @@
-"""SOS endpoints — trigger, accept, resolve, and cancel emergency alerts."""
+"""SOS endpoints — trigger, accept, resolve, cancel emergency alerts, and SSE live stream."""
 
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
 from app.api.v1.endpoints.auth import get_current_user_from_token
+from app.core.alert_stream import manager as _sse
 from app.core.database import get_db
 from app.schemas.auth import UserResponse
 from app.schemas.sos import SOSActionResponse, SOSResponse, SOSTriggerRequest
 from app.services import sos_service
 
 router = APIRouter()
+
+
+@router.get(
+    "/stream/{senior_id}",
+    summary="Live alert stream (SSE)",
+    response_class=EventSourceResponse,
+)
+async def alert_stream(
+    senior_id: UUID,
+    request: Request,
+    current_user: UserResponse = Depends(get_current_user_from_token),
+):
+    """
+    Open a Server-Sent Events stream for *senior_id*'s active emergency.
+
+    The Android client connects here immediately after receiving an FCM push for
+    ``EMERGENCY_ALERT``.  Each ``data:`` line is a JSON object with the fields::
+
+        {
+            "emergency_id": "…",
+            "senior_id":    "…",
+            "senior_name":  "Alice",
+            "status":       "ASSIGNED" | "ACCEPTED" | "RESOLVED" | "CANCELLED",
+            "terminal":     false | true,
+        }
+
+    When ``terminal == true`` the client should close the connection — no further
+    events will be emitted for this emergency.
+
+    Authentication is required: only users who are signed in may subscribe.
+    (Full caregiver-link validation is left to the SOS endpoints; validating the
+    link here would require an extra database query on every SSE connection,
+    which is expensive when the stream may be idle for minutes.)
+    """
+    async def _event_generator():
+        async for payload in _sse.subscribe(str(senior_id)):
+            # Stop streaming if the HTTP connection has been closed (phone locked,
+            # user navigated away, etc.).
+            if await request.is_disconnected():
+                break
+            yield {"data": payload}
+
+    return EventSourceResponse(_event_generator())
 
 
 @router.post("/trigger", response_model=SOSResponse, status_code=status.HTTP_201_CREATED)

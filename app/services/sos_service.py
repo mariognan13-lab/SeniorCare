@@ -9,7 +9,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.alert_stream import manager as _sse
 from app.core.config import settings
+from app.core.rtdb import sync_emergency_to_rtdb
 from app.db.models import (
     AssignmentStatus, Emergency, EmergencyAssignment, EmergencyEvent,
     EmergencyStatus, NotificationLog, Relationship, User,
@@ -98,8 +100,8 @@ async def trigger_sos(
     # them, because nothing in the backend had ever sent a push — so the only way
     # to discover an emergency was to open the app and look. send_push() never
     # raises, so a failure here cannot roll back the alert that summons help.
+    senior_name = full_emergency.senior.name if full_emergency.senior else "Someone you care for"
     if relationships:
-        senior_name = full_emergency.senior.name if full_emergency.senior else "Someone you care for"
         await notification_service.send_push(
             db=db,
             user_ids=[rel.related_user_id for rel in relationships],
@@ -110,6 +112,21 @@ async def trigger_sos(
                 "emergency_id": str(full_emergency.id),
             },
         )
+
+    # Broadcast live state to RTDB & SSE
+    payload = {
+        "emergency_id": str(full_emergency.id),
+        "senior_id": str(senior_id),
+        "senior_name": senior_name,
+        "status": full_emergency.status.value,
+        "emergency_type": full_emergency.emergency_type,
+        "description": full_emergency.description,
+        "priority": full_emergency.priority,
+        "terminal": False,
+        "updated_at": int(datetime.now(timezone.utc).timestamp()),
+    }
+    sync_emergency_to_rtdb(str(senior_id), payload)
+    await _sse.broadcast(senior_id=senior_id, event=payload)
 
     return full_emergency
 
@@ -241,6 +258,20 @@ async def accept_emergency(db: AsyncSession, emergency_id: UUID, caregiver_id: U
         )
 
     await db.flush()
+
+    # Broadcast live state update to RTDB and all SSE-connected clients.
+    payload = {
+        "emergency_id": str(full_emergency.id),
+        "senior_id": str(full_emergency.senior_id),
+        "senior_name": senior_name,
+        "status": full_emergency.status.value,
+        "emergency_type": full_emergency.emergency_type,
+        "accepted_by": caregiver_name,
+        "terminal": False,
+        "updated_at": int(datetime.now(timezone.utc).timestamp()),
+    }
+    sync_emergency_to_rtdb(str(full_emergency.senior_id), payload)
+    await _sse.broadcast(senior_id=full_emergency.senior_id, event=payload)
     return full_emergency
 
 
@@ -304,6 +335,17 @@ async def resolve_emergency(db: AsyncSession, emergency_id: UUID, user_id: UUID)
         )
 
     await db.flush()
+
+    payload = {
+        "emergency_id": str(full_emergency.id),
+        "senior_id": str(full_emergency.senior_id),
+        "senior_name": senior_name,
+        "status": "RESOLVED",
+        "terminal": True,
+        "updated_at": int(datetime.now(timezone.utc).timestamp()),
+    }
+    sync_emergency_to_rtdb(str(full_emergency.senior_id), payload)
+    await _sse.broadcast(senior_id=full_emergency.senior_id, event=payload)
     return full_emergency
 
 
@@ -360,5 +402,16 @@ async def cancel_emergency(db: AsyncSession, emergency_id: UUID, senior_id: UUID
         )
 
     await db.flush()
+
+    payload = {
+        "emergency_id": str(full_emergency.id),
+        "senior_id": str(full_emergency.senior_id),
+        "senior_name": senior_name,
+        "status": "CANCELLED",
+        "terminal": True,
+        "updated_at": int(datetime.now(timezone.utc).timestamp()),
+    }
+    sync_emergency_to_rtdb(str(full_emergency.senior_id), payload)
+    await _sse.broadcast(senior_id=full_emergency.senior_id, event=payload)
     return full_emergency
 
