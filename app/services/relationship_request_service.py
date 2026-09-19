@@ -40,17 +40,16 @@ _LOADED = (
 
 async def _find_user(db: AsyncSession, identifier: str) -> User:
     """
-    Resolve a user by email or by id.
+    Resolve a user by email, firebase_uid, or id.
 
     Email matching is case-insensitive to agree with ``GET /users/search``, which
     uses ``ilike``: a person found by typing their address in any case must also
     be resolvable at the moment the request is actually sent, or the search would
     offer a name the send then rejects.
 
-    The id comparison casts the column rather than comparing to a UUID, so a
-    string that is not a UUID at all — a name typed into the email field, say —
-    is simply no match instead of a database cast error. This mirrors the same
-    pattern in ``relationship_service.connect_users``.
+    UUID lookup uses both a cast comparison (PostgreSQL) and a raw string comparison
+    so the same code works on SQLite (used as local fallback), where casting a UUID
+    column may produce a different representation.
     """
     identifier = str(identifier).strip()
 
@@ -60,6 +59,7 @@ async def _find_user(db: AsyncSession, identifier: str) -> User:
                 User.email.ilike(identifier),
                 User.firebase_uid == identifier,
                 cast(User.id, String) == identifier,
+                cast(User.id, String) == identifier.lower(),
             )
         )
     )
@@ -172,16 +172,20 @@ async def create_request(
     )
     await db.flush()
 
-    await notification_service.send_push(
-        db=db,
-        user_ids=[target.id],
-        title="New connection request",
-        body=f"{requester_user.name} would like to connect with you.",
-        data={
-            "notification_type": "CONNECTION_REQUEST",
-            "request_id": str(request.id),
-        },
-    )
+    try:
+        await notification_service.send_push(
+            db=db,
+            user_ids=[target.id],
+            title="New connection request",
+            body=f"{requester_user.name} would like to connect with you.",
+            data={
+                "notification_type": "CONNECTION_REQUEST",
+                "request_id": str(request.id),
+            },
+        )
+    except Exception:
+        # Push notification failure must not roll back the connection request.
+        pass
 
     return await _reload(db, request.id)
 
@@ -277,15 +281,19 @@ async def respond(
         )
         await db.flush()
 
-        await notification_service.send_push(
-            db=db,
-            user_ids=[request.requester_id],
-            title="Connection accepted",
-            body=f"{target_user.name} accepted your connection request.",
-            data={
-                "notification_type": "CONNECTION_ACCEPTED",
-                "request_id": str(request.id),
-            },
-        )
+        try:
+            await notification_service.send_push(
+                db=db,
+                user_ids=[request.requester_id],
+                title="Connection accepted",
+                body=f"{target_user.name} accepted your connection request.",
+                data={
+                    "notification_type": "CONNECTION_ACCEPTED",
+                    "request_id": str(request.id),
+                },
+            )
+        except Exception:
+            # Push notification failure must not roll back the accepted status.
+            pass
 
     return await _reload(db, request_id)

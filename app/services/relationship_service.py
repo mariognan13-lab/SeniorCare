@@ -104,17 +104,21 @@ async def connect_users(
     )
     await db.flush()
 
-    await notification_service.send_push(
-        db=db,
-        user_ids=[target_user.id],
-        title="Added to Care Network",
-        body=f"{senior_name} added you to their care network.",
-        data={
-            "notification_type": "CONNECTION_ACCEPTED",
-            "relationship_id": str(rel.id),
-            "senior_id": str(senior_id),
-        },
-    )
+    try:
+        await notification_service.send_push(
+            db=db,
+            user_ids=[target_user.id],
+            title="Added to Care Network",
+            body=f"{senior_name} added you to their care network.",
+            data={
+                "notification_type": "CONNECTION_ACCEPTED",
+                "relationship_id": str(rel.id),
+                "senior_id": str(senior_id),
+            },
+        )
+    except Exception:
+        # Push notification failure must not roll back the new relationship.
+        pass
 
     # Reload with related user relationship populated
     res_rel = await db.execute(
