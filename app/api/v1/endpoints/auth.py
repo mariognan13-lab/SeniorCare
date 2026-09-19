@@ -27,11 +27,16 @@ async def get_current_user_from_token(
     # 1. Firebase ID token — what the Android client sends after Firebase sign-in.
     claims = await verify_firebase_id_token(token)
     if claims:
-        user = await user_service.get_user_by_firebase_uid(db, claims["sub"])
+        firebase_uid = claims["sub"]
+        user = await user_service.get_user_by_firebase_uid(db, firebase_uid)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No account linked to this Firebase user. Call /auth/sync-user first.",
+            email = claims.get("email") or f"{firebase_uid}@firebase.user"
+            name = claims.get("name") or email.split("@")[0].capitalize() or "User"
+            user = await user_service.sync_firebase_user(
+                db=db,
+                firebase_uid=firebase_uid,
+                email=email,
+                name=name,
             )
         return UserResponse.model_validate(user)
 

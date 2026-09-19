@@ -58,6 +58,7 @@ async def _find_user(db: AsyncSession, identifier: str) -> User:
         select(User).where(
             or_(
                 User.email.ilike(identifier),
+                User.firebase_uid == identifier,
                 cast(User.id, String) == identifier,
             )
         )
