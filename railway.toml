@@ -1,0 +1,13 @@
+[build]
+# Railway auto-detects Dockerfile in the root of the service directory.
+# No extra builder config needed.
+
+[deploy]
+# Health-check endpoint defined in main.py
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Tell Railway which directory is the service root
+# (set this in Railway UI → Settings → Root Directory = "backend")

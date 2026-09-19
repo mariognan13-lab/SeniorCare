@@ -1,0 +1,25 @@
+# Secrets & Credentials
+firebase-service-account.json
+*.service-account.json
+service-account*.json
+.env
+.env.*
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+scc.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Logs
+*.log

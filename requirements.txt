@@ -1,0 +1,21 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.1
+sqlalchemy[asyncio]>=2.0.31
+asyncpg>=0.30.0
+aiosqlite>=0.20.0
+python-jose[cryptography]>=3.3.0
+# Imported directly by app/core/firebase_auth.py to parse Google's x509 certs.
+cryptography>=42.0.0
+# passlib 1.7.4 (unmaintained, released 2020) is incompatible with bcrypt >= 4.1:
+# its backend self-test trips bcrypt's 72-byte guard and raises ValueError on
+# every hash/verify call. Pin below the break until passlib is replaced.
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.1,<4.1
+python-dotenv>=1.0.1
+pydantic-settings>=2.3.4
+email-validator>=2.0.0
+alembic>=1.13.2
+httpx>=0.27.0
+firebase-admin>=6.5.0
+apscheduler>=3.10.4
+
